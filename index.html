@@ -759,8 +759,8 @@ function announce(cls, num) {
   const txt   = document.getElementById('annText');
   const color = ACCENT[cls];
 
-  txt.textContent    = `Now Calling: Number ${pad(num)} — Table ${cls}`;
-  txt.style.color    = color;
+  txt.textContent          = `Now Calling: Number ${pad(num)} — Table ${cls}`;
+  txt.style.color          = color;
   bar.style.borderTopColor = color;
   bar.classList.add('show');
 
@@ -780,12 +780,90 @@ function announce(cls, num) {
   if (numEl) { numEl.classList.remove('pop'); void numEl.offsetWidth; numEl.classList.add('pop'); }
 
   clearTimeout(annTimer);
-  annTimer = setTimeout(() => bar.classList.remove('show'), 6500);
+  annTimer = setTimeout(() => bar.classList.remove('show'), 9000);
 
-  speak(cls, num);
+  // Play chime first, then speak after chime finishes
+  playAirportChime().then(chimeDuration => {
+    setTimeout(() => speak(cls, num), chimeDuration);
+  });
 }
 
-/* ── voice ── */
+/* ── airport chime (Web Audio API — no files needed) ── */
+function playAirportChime() {
+  return new Promise(resolve => {
+    let ctx;
+    try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { resolve(0); return; }
+
+    // Resume context if suspended (iOS requires user gesture — first tap unlocks it)
+    const resume = ctx.state === 'suspended' ? ctx.resume() : Promise.resolve();
+    resume.then(() => {
+
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.55, ctx.currentTime);
+      master.connect(ctx.destination);
+
+      // Airport chime: 4 notes — D5 · F#5 · A5 · D6  (ascending "ding dong dong ding")
+      // Classic 4-tone Westminster-style airport chime
+      const notes = [
+        { freq: 587.33, start: 0.0,  dur: 0.7  },   // D5
+        { freq: 739.99, start: 0.45, dur: 0.7  },   // F#5
+        { freq: 880.00, start: 0.9,  dur: 0.7  },   // A5
+        { freq: 1174.7, start: 1.35, dur: 1.1  },   // D6  (long hold)
+      ];
+
+      notes.forEach(({ freq, start, dur }) => {
+        const t = ctx.currentTime + start;
+
+        // Sine oscillator — pure bell tone
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+
+        // Second harmonic for richer bell timbre
+        const osc2 = ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(freq * 2.756, t); // inharmonic partial
+
+        const env = ctx.createGain();
+        env.gain.setValueAtTime(0, t);
+        env.gain.linearRampToValueAtTime(1.0,  t + 0.01);   // fast attack
+        env.gain.exponentialRampToValueAtTime(0.3,  t + 0.12); // initial decay
+        env.gain.exponentialRampToValueAtTime(0.001, t + dur);  // long release
+
+        const env2 = ctx.createGain();
+        env2.gain.setValueAtTime(0, t);
+        env2.gain.linearRampToValueAtTime(0.25, t + 0.01);
+        env2.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.4);
+
+        // Reverb-like delay
+        const delay = ctx.createDelay(0.5);
+        delay.delayTime.setValueAtTime(0.18, t);
+        const delayGain = ctx.createGain();
+        delayGain.gain.setValueAtTime(0.18, t);
+
+        osc.connect(env);
+        osc2.connect(env2);
+        env.connect(master);
+        env.connect(delay);
+        env2.connect(master);
+        delay.connect(delayGain);
+        delayGain.connect(master);
+
+        osc.start(t);
+        osc.stop(t + dur + 0.5);
+        osc2.start(t);
+        osc2.stop(t + dur * 0.4 + 0.1);
+      });
+
+      // Total chime duration + small pause before voice
+      const totalMs = (1.35 + 1.1 + 0.5 + 0.3) * 1000; // ~3300ms
+      resolve(totalMs);
+
+    }).catch(() => resolve(0));
+  });
+}
+
+/* ── voice announcement ── */
 function speak(cls, num) {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
@@ -795,12 +873,28 @@ function speak(cls, num) {
     (v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Karen')))
     || voices.find(v => v.lang.startsWith('en')) || voices[0];
   if (v) u.voice = v;
-  u.rate = 0.86; u.pitch = 1.05; u.volume = 1;
-  u.text = `Attention please. Number ${num}, Table ${cls}. Please proceed to Table ${cls}. I repeat, Number ${num}.`;
+  u.rate = 0.84; u.pitch = 1.05; u.volume = 1;
+  u.text = `Attention please. Number ${num}, Table ${cls}. Please proceed to Table ${cls}. I repeat, Number ${num}, Table ${cls}.`;
   window.speechSynthesis.speak(u);
 }
 
 if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => {};
+
+// Unlock AudioContext on first user interaction (required by iOS/Safari)
+let audioUnlocked = false;
+document.addEventListener('click', () => {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = ctx.createBuffer(1,1,22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    ctx.resume();
+  } catch(e) {}
+}, { once: false });
 
 /* ── clock ── */
 function tick() {
