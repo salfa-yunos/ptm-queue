@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PTM Queue Display — SRP Kampong Lambak Kanan</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --border: #1e2d45;
+    --accent-6a: #00d4ff;
+    --accent-6b: #00ff9d;
+    --accent-6c: #ff6b35;
+    --text: #e8eaf6;
+    --muted: #64748b;
+  }
+
+- { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+background: var(–bg);
+color: var(–text);
+font-family: ‘DM Sans’, sans-serif;
+min-height: 100vh;
+overflow-x: hidden;
+position: relative;
+}
+
+body::before {
+content: ‘’;
+position: fixed;
+inset: 0;
+background-image:
+linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+background-size: 60px 60px;
+animation: gridMove 20s linear infinite;
+pointer-events: none;
+}
+
+@keyframes gridMove { 0% { transform: translateY(0); } 100% { transform: translateY(60px); } }
+
+.bg-glow { position: fixed; border-radius: 50%; filter: blur(120px); opacity: 0.12; pointer-events: none; animation: breathe 6s ease-in-out infinite; }
+.bg-glow.g1 { width: 600px; height: 600px; background: var(–accent-6a); top: -200px; left: -200px; }
+.bg-glow.g2 { width: 500px; height: 500px; background: var(–accent-6b); bottom: -200px; right: 30%; animation-delay: 2s; }
+.bg-glow.g3 { width: 400px; height: 400px; background: var(–accent-6c); top: 30%; right: -100px; animation-delay: 4s; }
+@keyframes breathe { 0%,100% { opacity: 0.08; transform: scale(1); } 50% { opacity: 0.18; transform: scale(1.1); } }
+
+.flash-overlay { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 99; }
+.flash-overlay.flash { animation: screenFlash 0.6s ease; }
+@keyframes screenFlash { 0% { opacity: 0; } 20% { opacity: 0.15; } 100% { opacity: 0; } }
+
+header { text-align: center; padding: 2rem 1rem 0.5rem; position: relative; }
+.school-name { font-weight: 300; font-size: 0.8rem; letter-spacing: 0.3em; color: var(–muted); text-transform: uppercase; margin-bottom: 0.4rem; }
+.event-title { font-family: ‘Bebas Neue’, cursive; font-size: clamp(2rem,5vw,3.5rem); letter-spacing: 0.08em; background: linear-gradient(135deg,#fff 0%,#a0b4cc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; line-height: 1; }
+.subtitle { font-size: 0.75rem; color: var(–muted); letter-spacing: 0.2em; text-transform: uppercase; margin-top: 0.4rem; }
+.live-badge { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(255,50,50,0.15); border: 1px solid rgba(255,50,50,0.4); border-radius: 999px; padding: 0.3rem 0.8rem; font-family: ‘Space Mono’,monospace; font-size: 0.65rem; letter-spacing: 0.15em; color: #ff6b6b; margin-top: 0.8rem; }
+.live-dot { width: 7px; height: 7px; background: #ff4444; border-radius: 50%; animation: livePulse 1.2s ease-in-out infinite; }
+@keyframes livePulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.7); } }
+
+.clock { font-family: ‘Space Mono’,monospace; font-size: 1rem; color: var(–muted); position: absolute; top: 2rem; right: 2rem; letter-spacing: 0.1em; }
+
+/* Firebase status */
+.fb-status { display: inline-flex; align-items: center; gap: 0.4rem; font-family: ‘Space Mono’,monospace; font-size: 0.6rem; color: var(–muted); margin-top: 0.4rem; }
+.fb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(–muted); }
+.fb-dot.connected { background: #00ff9d; box-shadow: 0 0 6px #00ff9d; }
+.fb-dot.error { background: #ff4444; }
+
+.ticker-wrap { background: rgba(0,0,0,0.4); border-top: 1px solid var(–border); border-bottom: 1px solid var(–border); padding: 0.5rem 0; overflow: hidden; margin: 0.8rem 0; }
+.ticker { display: flex; animation: ticker 30s linear infinite; white-space: nowrap; }
+.ticker-item { font-family: ‘Space Mono’,monospace; font-size: 0.65rem; color: var(–muted); padding: 0 3rem; letter-spacing: 0.1em; }
+@keyframes ticker { 0% { transform:translateX(0); } 100% { transform:translateX(-50%); } }
+
+.queue-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1.5rem; max-width: 1200px; margin: 0 auto 1.5rem; padding: 0 1.5rem; }
+@media(max-width:768px) { .queue-grid { grid-template-columns:1fr; } .clock { display:none; } }
+
+.class-card { background: var(–surface); border: 1px solid var(–border); border-radius: 20px; overflow: hidden; transition: transform 0.3s ease; }
+.class-card.active-call { animation: cardFlash 0.6s ease; }
+@keyframes cardFlash { 0%,100% { transform:scale(1); } 30% { transform:scale(1.03); } }
+
+.card-header { padding: 1.2rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(–border); position: relative; overflow: hidden; }
+.card-header::before { content:’’; position:absolute; inset:0; opacity:0.08; }
+.card-6a .card-header { border-top: 3px solid var(–accent-6a); }
+.card-6a .card-header::before { background: var(–accent-6a); }
+.card-6b .card-header { border-top: 3px solid var(–accent-6b); }
+.card-6b .card-header::before { background: var(–accent-6b); }
+.card-6c .card-header { border-top: 3px solid var(–accent-6c); }
+.card-6c .card-header::before { background: var(–accent-6c); }
+
+.class-label { font-family: ‘Bebas Neue’,cursive; font-size: 2rem; letter-spacing: 0.05em; }
+.card-6a .class-label { color: var(–accent-6a); }
+.card-6b .class-label { color: var(–accent-6b); }
+.card-6c .class-label { color: var(–accent-6c); }
+.teacher-name { font-size: 0.7rem; color: var(–muted); letter-spacing: 0.1em; text-transform: uppercase; }
+.status-pill { font-size: 0.6rem; font-family: ‘Space Mono’,monospace; letter-spacing: 0.1em; padding: 0.25rem 0.6rem; border-radius: 999px; text-transform: uppercase; }
+.status-serving { background: rgba(0,255,100,0.15); color: #00ff9d; border: 1px solid rgba(0,255,100,0.3); }
+.status-waiting { background: rgba(100,116,139,0.15); color: var(–muted); border: 1px solid rgba(100,116,139,0.3); }
+
+.number-section { padding: 1.5rem; }
+.now-label { font-size: 0.6rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(–muted); margin-bottom: 0.3rem; }
+.current-number { font-family: ‘Bebas Neue’,cursive; font-size: clamp(5rem,12vw,8rem); line-height: 1; letter-spacing: -0.02em; display: inline-block; transition: all 0.4s; }
+.card-6a .current-number { color: var(–accent-6a); text-shadow: 0 0 60px rgba(0,212,255,0.5); }
+.card-6b .current-number { color: var(–accent-6b); text-shadow: 0 0 60px rgba(0,255,157,0.5); }
+.card-6c .current-number { color: var(–accent-6c); text-shadow: 0 0 60px rgba(255,107,53,0.5); }
+.number-animate { animation: numberPop 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+@keyframes numberPop { 0% { transform:scale(0.5) translateY(20px); opacity:0; } 100% { transform:scale(1) translateY(0); opacity:1; } }
+.no-number { font-family: ‘Bebas Neue’,cursive; font-size: 3rem; color: var(–border); letter-spacing: 0.1em; }
+
+.divider { height: 1px; background: var(–border); margin: 0 1.5rem; }
+.next-section { padding: 1rem 1.5rem 1.5rem; display: flex; align-items: center; justify-content: space-between; }
+.next-label { font-size: 0.6rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(–muted); }
+.next-number { font-family: ‘Bebas Neue’,cursive; font-size: 2.5rem; color: var(–muted); opacity: 0.6; }
+
+.progress-section { padding: 0 1.5rem 1.2rem; }
+.progress-info { display: flex; justify-content: space-between; font-size: 0.65rem; color: var(–muted); margin-bottom: 0.4rem; font-family: ‘Space Mono’,monospace; }
+.progress-bar { height: 3px; background: var(–border); border-radius: 999px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 999px; transition: width 0.8s ease; }
+.card-6a .progress-fill { background: var(–accent-6a); }
+.card-6b .progress-fill { background: var(–accent-6b); }
+.card-6c .progress-fill { background: var(–accent-6c); }
+
+.queue-preview { padding: 0 1.5rem 1.5rem; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.queue-pill { font-family: ‘Space Mono’,monospace; font-size: 0.6rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: var(–border); color: var(–muted); }
+.queue-pill.done { text-decoration: line-through; opacity: 0.3; }
+.queue-pill.current { color: #fff; font-weight: 700; }
+.card-6a .queue-pill.current { background: var(–accent-6a); color: #000; }
+.card-6b .queue-pill.current { background: var(–accent-6b); color: #000; }
+.card-6c .queue-pill.current { background: var(–accent-6c); color: #000; }
+
+.announcement-bar { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(10,14,26,0.95); border-top: 1px solid var(–border); backdrop-filter: blur(20px); padding: 0.8rem 2rem; display: flex; align-items: center; gap: 1rem; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1); z-index: 100; }
+.announcement-bar.visible { transform: translateY(0); }
+.announce-icon { font-size: 1.5rem; animation: shake 0.5s ease infinite alternate; }
+@keyframes shake { 0% { transform:rotate(-10deg); } 100% { transform:rotate(10deg); } }
+.announce-text { font-family: ‘Bebas Neue’,cursive; font-size: 1.5rem; letter-spacing: 0.08em; }
+
+/* Config overlay */
+.config-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.config-box { background: var(–surface); border: 1px solid var(–border); border-radius: 20px; padding: 2rem; width: 100%; max-width: 480px; }
+.config-title { font-family: ‘Bebas Neue’,cursive; font-size: 2rem; color: var(–accent-6a); letter-spacing: 0.08em; margin-bottom: 0.3rem; }
+.config-sub { font-size: 0.75rem; color: var(–muted); margin-bottom: 1.5rem; line-height: 1.6; }
+.config-label { font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(–muted); margin-bottom: 0.4rem; display: block; }
+.config-input { width: 100%; background: var(–bg); border: 1px solid var(–border); border-radius: 10px; padding: 0.7rem 1rem; color: var(–text); font-family: ‘Space Mono’,monospace; font-size: 0.85rem; outline: none; margin-bottom: 1rem; transition: border-color 0.2s; }
+.config-input:focus { border-color: var(–accent-6a); }
+.config-btn { width: 100%; padding: 0.9rem; font-family: ‘Bebas Neue’,cursive; font-size: 1.5rem; letter-spacing: 0.1em; border: none; border-radius: 12px; cursor: pointer; background: var(–accent-6a); color: #000; transition: opacity 0.2s; }
+.config-btn:hover { opacity: 0.85; }
+.config-hint { font-size: 0.65rem; color: var(–muted); margin-top: 1rem; line-height: 1.6; text-align: center; }
+.config-hint a { color: var(–accent-6a); }
+</style>
+
+</head>
+<body>
+
+<!-- Firebase config overlay — shown first time -->
+
+<div class="config-overlay" id="configOverlay">
+  <div class="config-box">
+    <div class="config-title">🔥 Firebase Setup</div>
+    <div class="config-sub">Paste your Firebase config values below. You only need to do this once — it will be saved in your browser.</div>
+
+```
+<label class="config-label">Database URL</label>
+<input class="config-input" id="cfg-dbUrl" placeholder="https://your-project-default-rtdb.firebaseio.com" />
+
+<label class="config-label">API Key</label>
+<input class="config-input" id="cfg-apiKey" placeholder="AIzaSy..." />
+
+<label class="config-label">Project ID</label>
+<input class="config-input" id="cfg-projectId" placeholder="your-project-id" />
+
+<label class="config-label">App ID</label>
+<input class="config-input" id="cfg-appId" placeholder="1:123456789:web:abc..." />
+
+<button class="config-btn" onclick="saveConfig()">▶ CONNECT & START</button>
+<div class="config-hint">
+  Don't have these yet? Follow the <strong>Step-by-step Firebase setup guide</strong> in the README.md file.<br><br>
+  Already set up? Your config is auto-loaded. <a href="#" onclick="clearConfig()">Reset config</a>
+</div>
+```
+
+  </div>
+</div>
+
+<div class="bg-glow g1"></div>
+<div class="bg-glow g2"></div>
+<div class="bg-glow g3"></div>
+<div class="flash-overlay" id="flashOverlay"></div>
+
+<header>
+  <div class="clock" id="clock">00:00:00</div>
+  <div class="school-name">SRP Kampong Lambak Kanan Jalan 10 · Cluster 3</div>
+  <div class="event-title">Parent-Teacher Meeting 2026</div>
+  <div class="subtitle">Live Queue Display · Year 6</div>
+  <div><span class="live-badge"><span class="live-dot"></span>LIVE</span></div>
+  <div class="fb-status"><span class="fb-dot" id="fbDot"></span><span id="fbStatusText">Connecting...</span></div>
+</header>
+
+<div class="ticker-wrap">
+  <div class="ticker">
+    <span class="ticker-item">📢 Please listen for your number to be called &nbsp;·&nbsp; Sila dengar nombor giliran anda &nbsp;·&nbsp; 请注意您的号码 &nbsp;·&nbsp;</span>
+    <span class="ticker-item">📢 Please proceed to the correct class table when your number is called &nbsp;·&nbsp; Sila pergi ke meja kelas apabila nombor anda dipanggil &nbsp;·&nbsp;</span>
+    <span class="ticker-item">📢 Please listen for your number to be called &nbsp;·&nbsp; Sila dengar nombor giliran anda &nbsp;·&nbsp; 请注意您的号码 &nbsp;·&nbsp;</span>
+    <span class="ticker-item">📢 Please proceed to the correct class table when your number is called &nbsp;·&nbsp; Sila pergi ke meja kelas apabila nombor anda dipanggil &nbsp;·&nbsp;</span>
+  </div>
+</div>
+
+<div class="queue-grid" id="queueGrid"></div>
+
+<div class="announcement-bar" id="announcementBar">
+  <span class="announce-icon">🔔</span>
+  <span class="announce-text" id="announceText">Now calling: Number 1 at Table 6A</span>
+</div>
+
+<!-- Firebase SDK -->
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const TOTAL_SLOTS = 30;
+const COLORS = {
+  '6A': { accent: '#00d4ff' },
+  '6B': { accent: '#00ff9d' },
+  '6C': { accent: '#ff6b35' },
+};
+
+let db, prevState = {};
+let voices = [];
+let announcementTimer;
+
+// ── Config management ─────────────────────────────────────────────────────────
+function getSavedConfig() {
+  try { return JSON.parse(localStorage.getItem('ptm_fb_config')); } catch(e) { return null; }
+}
+
+window.saveConfig = function() {
+  const cfg = {
+    databaseURL: document.getElementById('cfg-dbUrl').value.trim(),
+    apiKey: document.getElementById('cfg-apiKey').value.trim(),
+    projectId: document.getElementById('cfg-projectId').value.trim(),
+    appId: document.getElementById('cfg-appId').value.trim(),
+    authDomain: document.getElementById('cfg-projectId').value.trim() + '.firebaseapp.com',
+    storageBucket: document.getElementById('cfg-projectId').value.trim() + '.appspot.com',
+    messagingSenderId: '000000000000',
+  };
+  if (!cfg.databaseURL || !cfg.apiKey || !cfg.projectId) {
+    alert('Please fill in all fields!'); return;
+  }
+  localStorage.setItem('ptm_fb_config', JSON.stringify(cfg));
+  document.getElementById('configOverlay').style.display = 'none';
+  initFirebase(cfg);
+};
+
+window.clearConfig = function() {
+  localStorage.removeItem('ptm_fb_config');
+  location.reload();
+};
+
+// ── Firebase init ─────────────────────────────────────────────────────────────
+function initFirebase(cfg) {
+  try {
+    const app = initializeApp(cfg);
+    db = getDatabase(app);
+
+    // Monitor connection
+    const connRef = ref(db, '.info/connected');
+    onValue(connRef, snap => {
+      const connected = snap.val();
+      document.getElementById('fbDot').className = 'fb-dot ' + (connected ? 'connected' : 'error');
+      document.getElementById('fbStatusText').textContent = connected ? 'Firebase connected ✓' : 'Reconnecting...';
+    });
+
+    // Listen to queue data
+    const queueRef = ref(db, 'ptm2026/queue');
+    onValue(queueRef, snap => {
+      const data = snap.val();
+      if (!data) {
+        // Initialize default state
+        set(queueRef, {
+          '6A': { current: 0, teacher: 'Cikgu Salfa', started: false, total: 30 },
+          '6B': { current: 0, teacher: 'Cikgu', started: false, total: 30 },
+          '6C': { current: 0, teacher: 'Cikgu', started: false, total: 30 },
+        });
+        return;
+      }
+
+      // Detect changes and announce
+      ['6A','6B','6C'].forEach(cls => {
+        const oldCur = prevState[cls]?.current || 0;
+        const newCur = data[cls]?.current || 0;
+        if (newCur !== oldCur && newCur > 0 && Object.keys(prevState).length > 0) {
+          triggerAnnouncement(cls, newCur);
+        }
+      });
+
+      prevState = JSON.parse(JSON.stringify(data));
+      renderCards(data);
+    });
+
+  } catch(err) {
+    document.getElementById('fbDot').className = 'fb-dot error';
+    document.getElementById('fbStatusText').textContent = 'Connection error — check config';
+    console.error(err);
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderCards(state) {
+  const grid = document.getElementById('queueGrid');
+  grid.innerHTML = '';
+
+  ['6A','6B','6C'].forEach(cls => {
+    const s = state[cls] || { current: 0, teacher: 'Cikgu', started: false, total: 30 };
+    const current = s.current || 0;
+    const total = s.total || 30;
+    const done = current;
+    const remaining = total - done;
+    const pct = Math.round((done / total) * 100);
+    const next = current + 1;
+
+    const start = Math.max(1, current - 2);
+    const end = Math.min(total, current + 5);
+    let pills = '';
+    for (let i = start; i <= end; i++) {
+      let cl = 'queue-pill';
+      if (i < current) cl += ' done';
+      if (i === current) cl += ' current';
+      pills += `<span class="${cl}">${String(i).padStart(2,'0')}</span>`;
+    }
+    if (end < total) pills += `<span class="queue-pill">…${total}</span>`;
+
+    const card = document.createElement('div');
+    card.className = `class-card card-${cls}`;
+    card.id = `card-${cls}`;
+    card.innerHTML = `
+      <div class="card-header">
+        <div>
+          <div class="class-label">TABLE ${cls}</div>
+          <div class="teacher-name">${s.teacher || 'Cikgu'}</div>
+        </div>
+        <span class="status-pill ${s.started && current > 0 ? 'status-serving' : 'status-waiting'}">
+          ${s.started && current > 0 ? '● SERVING' : '○ WAITING'}
+        </span>
+      </div>
+      <div class="number-section">
+        <div class="now-label">Now Serving</div>
+        ${current > 0
+          ? `<div class="current-number" id="num-${cls}">${String(current).padStart(2,'0')}</div>`
+          : `<div class="no-number">—</div>`}
+      </div>
+      <div class="divider"></div>
+      <div class="next-section">
+        <div><div class="next-label">Next Up</div><div class="next-number">${next <= total ? String(next).padStart(2,'0') : '—'}</div></div>
+        <div style="text-align:right"><div class="next-label">Remaining</div><div class="next-number">${remaining}</div></div>
+      </div>
+      <div class="progress-section">
+        <div class="progress-info"><span>Progress</span><span>${done}/${total} · ${pct}%</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      </div>
+      <div class="queue-preview">${pills}</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ── Announcement + Voice ──────────────────────────────────────────────────────
+function triggerAnnouncement(cls, number) {
+  const bar = document.getElementById('announcementBar');
+  const text = document.getElementById('announceText');
+  const color = COLORS[cls].accent;
+
+  text.style.color = color;
+  bar.style.borderTop = `2px solid ${color}`;
+  text.textContent = `Now Calling: Number ${number} at Table ${cls}`;
+  bar.classList.add('visible');
+
+  const flash = document.getElementById('flashOverlay');
+  flash.style.background = color;
+  flash.classList.remove('flash');
+  void flash.offsetWidth;
+  flash.classList.add('flash');
+
+  const card = document.getElementById(`card-${cls}`);
+  if (card) { card.classList.remove('active-call'); void card.offsetWidth; card.classList.add('active-call'); }
+
+  clearTimeout(announcementTimer);
+  announcementTimer = setTimeout(() => bar.classList.remove('visible'), 6000);
+
+  speakNumber(cls, number);
+}
+
+function speakNumber(cls, number) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance();
+  const allVoices = window.speechSynthesis.getVoices();
+  const preferred = allVoices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Samantha')))
+    || allVoices.find(v => v.lang.startsWith('en')) || allVoices[0];
+  if (preferred) utt.voice = preferred;
+  utt.rate = 0.88; utt.pitch = 1.05; utt.volume = 1;
+  utt.text = `Attention please. Number ${number} for table ${cls}, please proceed. I repeat, number ${number} for table ${cls}.`;
+  window.speechSynthesis.speak(utt);
+}
+
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => {};
+}
+
+// ── Clock ─────────────────────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}, 1000);
+
+// ── Auto-init if config saved ─────────────────────────────────────────────────
+const saved = getSavedConfig();
+if (saved) {
+  document.getElementById('configOverlay').style.display = 'none';
+  // Pre-fill form in case they want to reset
+  document.getElementById('cfg-dbUrl').value = saved.databaseURL || '';
+  document.getElementById('cfg-apiKey').value = saved.apiKey || '';
+  document.getElementById('cfg-projectId').value = saved.projectId || '';
+  document.getElementById('cfg-appId').value = saved.appId || '';
+  initFirebase(saved);
+}
+</script>
+
+</body>
+</html>
